@@ -1,119 +1,222 @@
-#!/usr/bin/env python3
-
+import pytest
 from cash_register import CashRegister
 
-import io
-import sys
 
-class TestCashRegister:
-    '''CashRegister in cash_register.py'''
+# ======================================================================
+# __init__ / attribute initialisation
+# ======================================================================
 
-    cash_register = CashRegister()
-    cash_register_with_discount = CashRegister(20)
+class TestInit:
+    def test_default_discount_is_zero(self):
+        cr = CashRegister()
+        assert cr.discount == 0
 
-    def reset_register_totals(self):
-      self.cash_register.total = 0
-      self.cash_register_with_discount.total = 0
+    def test_custom_discount_stored(self):
+        cr = CashRegister(20)
+        assert cr.discount == 20
 
-    def test_discount_attribute(self):
-        '''takes one optional argument, a discount, on initialization.'''
-        assert(self.cash_register.discount == 0)
-        assert(self.cash_register_with_discount.discount == 20)
+    def test_total_initialised_to_zero(self):
+        cr = CashRegister()
+        assert cr.total == 0
 
-    def test_total_attribute(self):
-        '''sets an instance variable total to zero on initialization.'''
-        assert(self.cash_register.total == 0)
-        assert(self.cash_register_with_discount.total == 0)
+    def test_items_initialised_as_empty_list(self):
+        cr = CashRegister()
+        assert cr.items == []
 
-    def test_items_attribute(self):
-        '''sets an instance variable items to empty list on initialization.'''
-        assert(self.cash_register.items == [])
-        assert(self.cash_register_with_discount.items == [])
+    def test_previous_transactions_initialised_as_empty_list(self):
+        cr = CashRegister()
+        assert cr.previous_transactions == []
 
-    def test_add_item(self):
-        '''accepts a title and a price and increases the total.'''
-        self.cash_register.add_item("eggs", 0.98)
-        assert(self.cash_register.total == 0.98)
-        # self.reset_total(self.cash_register)
-        self.reset_register_totals()
 
-    def test_add_item_optional_quantity(self):
-        '''also accepts an optional quantity.'''
-        self.cash_register.add_item("book", 5.00, 3)
-        assert(self.cash_register.total == 15.00)
-        # self.cash_register.total = 0
-        self.reset_register_totals()
+# ======================================================================
+# discount property validation
+# ======================================================================
 
-    def test_add_item_with_multiple_items(self):
-        '''doesn"t forget about the previous total'''
-        self.cash_register.add_item("Lucky Charms", 4.5)
-        assert(self.cash_register.total == 4.5)
-        self.cash_register.add_item("Ritz Crackers", 5.0)
-        assert(self.cash_register.total == 9.5)
-        self.cash_register.add_item("Justin's Peanut Butter Cups", 2.50, 2)
-        assert(self.cash_register.total == 14.5)
-        self.reset_register_totals()
+class TestDiscountProperty:
+    def test_valid_discount_lower_bound(self):
+        cr = CashRegister(0)
+        assert cr.discount == 0
 
-    def test_apply_discount(self):
-        '''applies the discount to the total price.'''
-        self.cash_register_with_discount.add_item("macbook air", 1000)
-        self.cash_register_with_discount.apply_discount()   
-        assert(self.cash_register_with_discount.total == 800)
-        # self.cash_register_with_discount.total = 0
-        self.reset_register_totals()
+    def test_valid_discount_upper_bound(self):
+        cr = CashRegister(100)
+        assert cr.discount == 100
 
-    def test_apply_discount_success_message(self):
-        '''prints success message with updated total'''
-        captured_out = io.StringIO()
-        sys.stdout = captured_out
-        self.cash_register_with_discount.add_item("macbook air", 1000)
-        self.cash_register_with_discount.apply_discount()
-        sys.stdout = sys.__stdout__
-        assert(captured_out.getvalue() == "After the discount, the total comes to $800.\n")
-        self.reset_register_totals()
+    def test_valid_discount_midrange(self):
+        cr = CashRegister(50)
+        assert cr.discount == 50
 
+    def test_negative_discount_rejected(self, capsys):
+        cr = CashRegister(-5)
+        captured = capsys.readouterr()
+        assert "Not valid discount" in captured.out
+        assert cr.discount == 0
+
+    def test_discount_above_100_rejected(self, capsys):
+        cr = CashRegister(101)
+        captured = capsys.readouterr()
+        assert "Not valid discount" in captured.out
+        assert cr.discount == 0
+
+    def test_float_discount_rejected(self, capsys):
+        cr = CashRegister(10.5)
+        captured = capsys.readouterr()
+        assert "Not valid discount" in captured.out
+        assert cr.discount == 0
+
+    def test_string_discount_rejected(self, capsys):
+        cr = CashRegister("ten")
+        captured = capsys.readouterr()
+        assert "Not valid discount" in captured.out
+        assert cr.discount == 0
+
+    def test_setter_updates_discount(self):
+        cr = CashRegister()
+        cr.discount = 30
+        assert cr.discount == 30
+
+
+# ======================================================================
+# add_item
+# ======================================================================
+
+class TestAddItem:
+    def test_add_item_updates_total(self):
+        cr = CashRegister()
+        cr.add_item("apple", 1.50)
+        assert cr.total == 1.50
+
+    def test_add_item_default_quantity_one(self):
+        cr = CashRegister()
+        cr.add_item("banana", 0.75)
+        assert cr.items.count("banana") == 1
+
+    def test_add_item_with_quantity(self):
+        cr = CashRegister()
+        cr.add_item("mango", 2.00, 3)
+        assert cr.total == 6.00
+        assert cr.items.count("mango") == 3
+
+    def test_add_item_appends_to_items(self):
+        cr = CashRegister()
+        cr.add_item("shirt", 20.00)
+        assert "shirt" in cr.items
+
+    def test_add_item_records_transaction(self):
+        cr = CashRegister()
+        cr.add_item("hat", 15.00, 2)
+        assert len(cr.previous_transactions) == 1
+        txn = cr.previous_transactions[0]
+        assert txn["item"] == "hat"
+        assert txn["price"] == 30.00
+        assert txn["quantity"] == 2
+
+    def test_multiple_add_items_accumulate_total(self):
+        cr = CashRegister()
+        cr.add_item("pen", 1.00)
+        cr.add_item("notebook", 5.00)
+        assert cr.total == 6.00
+
+    def test_multiple_add_items_accumulate_transactions(self):
+        cr = CashRegister()
+        cr.add_item("pen", 1.00)
+        cr.add_item("notebook", 5.00)
+        assert len(cr.previous_transactions) == 2
+
+
+# ======================================================================
+# apply_discount
+# ======================================================================
+
+class TestApplyDiscount:
     def test_apply_discount_reduces_total(self):
-        '''reduces the total'''
-        self.cash_register_with_discount.add_item("macbook air", 1000)
-        self.cash_register_with_discount.apply_discount()
-        assert(self.cash_register_with_discount.total == 800)
-        self.reset_register_totals()
+        cr = CashRegister(20)
+        cr.add_item("jeans", 100.00)
+        cr.apply_discount()
+        assert cr.total == 80.00
 
-    def test_apply_discount_when_no_discount(self):
-        '''prints a string error message that there is no discount to apply'''
-        captured_out = io.StringIO()
-        sys.stdout = captured_out
-        self.cash_register.apply_discount()
-        sys.stdout = sys.__stdout__
-        assert(captured_out.getvalue() == "There is no discount to apply.\n")
-        self.reset_register_totals()
+    def test_apply_discount_resets_discount_to_zero(self):
+        cr = CashRegister(10)
+        cr.add_item("shoes", 50.00)
+        cr.apply_discount()
+        assert cr.discount == 0
 
-    def test_items_list_without_multiples(self):
-        '''returns an array containing all items that have been added'''
-        new_register = CashRegister()
-        new_register.add_item("eggs", 1.99)
-        new_register.add_item("tomato", 1.76)
-        assert(new_register.items == ["eggs", "tomato"])
+    def test_apply_discount_cannot_be_applied_twice(self):
+        cr = CashRegister(10)
+        cr.add_item("shoes", 50.00)
+        cr.apply_discount()
+        total_after_first = cr.total
+        cr.apply_discount()          # second call — discount is now 0
+        assert cr.total == total_after_first
 
-    def test_items_list_with_multiples(self):
-        '''returns an array containing all items that have been added, including multiples'''
-        new_register = CashRegister()
-        new_register.add_item("eggs", 1.99, 2)
-        new_register.add_item("tomato", 1.76, 3)
-        assert(new_register.items == ["eggs", "eggs", "tomato", "tomato", "tomato"])
+    def test_apply_discount_with_no_transactions_prints_message(self, capsys):
+        cr = CashRegister(15)
+        cr.apply_discount()
+        captured = capsys.readouterr()
+        assert "There is no discount to apply." in captured.out
 
-    def test_void_last_transaction(self):
-      '''subtracts the last item from the total'''
-      self.cash_register.add_item("apple", 0.99)
-      self.cash_register.add_item("tomato", 1.76)
-      self.cash_register.void_last_transaction()
-      assert(self.cash_register.total == 0.99)
-      self.reset_register_totals()
+    def test_apply_discount_does_not_change_items(self):
+        cr = CashRegister(25)
+        cr.add_item("coat", 200.00)
+        cr.apply_discount()
+        assert "coat" in cr.items
 
-    def test_void_last_transaction_with_multiples(self):
-      '''returns the total to 0.0 if all items have been removed'''
-      self.cash_register.add_item("tomato", 1.76, 2)
-      self.cash_register.void_last_transaction() 
-      assert(self.cash_register.total == 0.0)
-      self.reset_register_totals()
-      
+    def test_apply_zero_discount_leaves_total_unchanged(self):
+        cr = CashRegister(0)
+        cr.add_item("socks", 5.00)
+        cr.apply_discount()
+        assert cr.total == 5.00
+
+
+# ======================================================================
+# void_last_transaction
+# ======================================================================
+
+class TestVoidLastTransaction:
+    def test_void_removes_last_transaction(self):
+        cr = CashRegister()
+        cr.add_item("book", 10.00)
+        cr.void_last_transaction()
+        assert len(cr.previous_transactions) == 0
+
+    def test_void_reduces_total(self):
+        cr = CashRegister()
+        cr.add_item("book", 10.00)
+        cr.void_last_transaction()
+        assert cr.total == 0.00
+
+    def test_void_removes_item_from_items(self):
+        cr = CashRegister()
+        cr.add_item("lamp", 25.00)
+        cr.void_last_transaction()
+        assert "lamp" not in cr.items
+
+    def test_void_multi_quantity_removes_all_units(self):
+        cr = CashRegister()
+        cr.add_item("pen", 1.00, 5)
+        cr.void_last_transaction()
+        assert cr.items.count("pen") == 0
+        assert cr.total == 0.00
+
+    def test_void_only_removes_last_transaction(self):
+        cr = CashRegister()
+        cr.add_item("apple", 1.00)
+        cr.add_item("orange", 2.00)
+        cr.void_last_transaction()
+        assert cr.total == 1.00
+        assert "apple" in cr.items
+        assert "orange" not in cr.items
+
+    def test_void_with_no_transactions_prints_message(self, capsys):
+        cr = CashRegister()
+        cr.void_last_transaction()
+        captured = capsys.readouterr()
+        assert "There is no transaction to void." in captured.out
+
+    def test_void_twice_removes_two_transactions(self):
+        cr = CashRegister()
+        cr.add_item("a", 1.00)
+        cr.add_item("b", 2.00)
+        cr.void_last_transaction()
+        cr.void_last_transaction()
+        assert cr.total == 0.00
+        assert cr.items == []
